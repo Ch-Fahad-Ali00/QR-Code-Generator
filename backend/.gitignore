@@ -26,6 +26,4 @@ dist-ssr
 
 node_modules/
 .env
-.env.local
-build
-dist
+dist/
