@@ -4,9 +4,11 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon index.js",
-    "build": "node --check index.js && npx eslint ."
-  },
+  "dev": "nodemon index.js",
+  "lint": "eslint .",
+  "build": "node --check index.js",
+  "start": "node index.js"
+},
   "keywords": [],
   "author": "",
   "license": "ISC",
