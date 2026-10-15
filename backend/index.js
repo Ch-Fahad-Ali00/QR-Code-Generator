@@ -38,12 +38,12 @@ app.post("/add-data", async (req, res) => {
 
         const savedUser = await newUser.save();
 
-        res.status(201).json(savedUser);
+        res.send(201).json(savedUser);
 
     } catch (error) {
         console.log(error);
 
-        res.status(500).json({
+        res.send(500).json({
             message: "Failed to add user",
             error: error.message
         });
