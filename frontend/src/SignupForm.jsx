@@ -6,17 +6,21 @@ import {
     parsePhoneNumberFromString, 
     getExampleNumber, 
     getCountryCallingCode,
-    getCountries 
+    getCountries,
+    AsYouType,
+    getPhoneCode // Helper to get country code
 } from "libphonenumber-js";
 import examples from "libphonenumber-js/examples.mobile.json";
 
 const SignupForm = () => {
-    const [f, setF] = useState({ name: "", email: "", contact: "", password: "" });
+    const [f, setF] = useState({ name: "", email: "", contact: "", password: "", confirmPassword: "" });
     const [selectedCountryCode, setSelectedCountryCode] = useState("PK");
     const [errors, setErrors] = useState({});
-    const [showPassword, setShowPassword] = useState(false); // State for password visibility
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const navigate = useNavigate();
 
+    // Generate all countries
     const allCountries = useMemo(() => {
         const displayNames = new Intl.DisplayNames(['en'], { type: 'region' });
         const countryCodes = getCountries();
@@ -33,6 +37,46 @@ const SignupForm = () => {
 
     const selectedCountry = allCountries.find(c => c.code === selectedCountryCode) || allCountries[0];
 
+    // 🟢 REAL-TIME RESTRICTION LOGIC
+    const handleContactChange = (e) => {
+        let rawValue = e.target.value;
+        
+        // 1. Strip out anything that isn't a number
+        rawValue = rawValue.replace(/[^\d]/g, '');
+
+        // 2. Strict rule for Pakistan: Must start with 0 or 3, and max 11 digits
+        if (selectedCountryCode === "PK") {
+            // Only allow digits 0-9, but specifically enforce the starting digit
+            if (rawValue.length > 0) {
+                const firstChar = rawValue[0];
+                // If they type a 4, 5, 6, etc., don't let them type it
+                if (!['0', '3'].includes(firstChar)) {
+                    return; 
+                }
+            }
+            // Hard limit for PK length (11 digits max: 03001234567)
+            if (rawValue.length > 11) {
+                rawValue = rawValue.slice(0, 11);
+            }
+        } else {
+            // For other countries, let libphonenumber handle the max length
+            const formatter = new AsYouType(selectedCountryCode);
+            const testFormat = formatter.input(rawValue);
+            
+            // If they exceed the valid length, chop off the extra digit
+            if (formatter.getNumber() && formatter.getNumber().length > 15) {
+                rawValue = rawValue.slice(0, -1);
+            }
+        }
+
+        // 3. Apply the formatting (adds spaces automatically)
+        const formatter = new AsYouType(selectedCountryCode);
+        const formattedValue = formatter.input(rawValue);
+
+        setF({ ...f, contact: formattedValue });
+        if (errors.contact) setErrors({ ...errors, contact: "" });
+    };
+
     const onChange = (e) => {
         setF({ ...f, [e.target.name]: e.target.value });
         if (errors[e.target.name]) setErrors({ ...errors, [e.target.name]: "" });
@@ -40,6 +84,8 @@ const SignupForm = () => {
 
     const validate = () => {
         let newErrors = {};
+        
+        // 1. Email
         const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
         if (!emailRegex.test(f.email)) {
             newErrors.email = "Please enter a valid email address.";
@@ -49,10 +95,21 @@ const SignupForm = () => {
             if (blocked.includes(domain)) newErrors.email = "Please use a real email provider.";
         }
 
-        const fullPhone = `${selectedCountry.dialCode}${f.contact}`;
+        // 2. Phone
+        const cleanContact = f.contact.replace(/[\s-]/g, '');
+        const fullPhone = `${selectedCountry.dialCode}${cleanContact}`;
         const phoneNumber = parsePhoneNumberFromString(fullPhone);
+        
         if (!phoneNumber || !phoneNumber.isValid()) {
             newErrors.contact = `Invalid phone number for ${selectedCountry.name}.`;
+        }
+
+        // 3. Password
+        if (f.password.length < 6) {
+            newErrors.password = "Password must be at least 6 characters.";
+        }
+        if (f.password !== f.confirmPassword) {
+            newErrors.confirmPassword = "Passwords do not match.";
         }
 
         setErrors(newErrors);
@@ -63,8 +120,16 @@ const SignupForm = () => {
         e.preventDefault();
         if (!validate()) return;
 
-        const finalContact = `${selectedCountry.dialCode}${f.contact}`;
-        const payload = { ...f, contact: finalContact };
+        const cleanContact = f.contact.replace(/[\s-]/g, '');
+        const finalContact = `${selectedCountry.dialCode}${cleanContact}`;
+        
+        const payload = { 
+            name: f.name, 
+            email: f.email, 
+            contact: finalContact, 
+            password: f.password,
+            confirmPassword: f.confirmPassword
+        };
 
         try {
             const { data } = await axios.post("http://localhost:5000/add-data", payload);
@@ -100,6 +165,7 @@ const SignupForm = () => {
                         value={selectedCountryCode}
                         onChange={(e) => {
                             setSelectedCountryCode(e.target.value);
+                            setF({ ...f, contact: "" }); 
                             setErrors({ ...errors, contact: "" });
                         }}
                         className="w-[180px] outline-blue-300 rounded-md p-2 border border-gray-200 bg-gray-50 cursor-pointer text-sm"
@@ -114,7 +180,7 @@ const SignupForm = () => {
                     <input 
                         name="contact" 
                         value={f.contact} 
-                        onChange={onChange} 
+                        onChange={handleContactChange} 
                         type="tel" 
                         required 
                         placeholder={placeholderText}
@@ -130,11 +196,10 @@ const SignupForm = () => {
                     name="password" 
                     value={f.password} 
                     onChange={onChange} 
-                    type={showPassword ? "text" : "password"} // Toggle type here
+                    type={showPassword ? "text" : "password"} 
                     required 
-                    className="w-full outline-blue-300 rounded-md p-2 pr-10 border border-gray-200" 
+                    className={`w-full outline-blue-300 rounded-md p-2 pr-10 border ${errors.password ? 'border-red-500' : 'border-gray-200'}`} 
                 />
-                {/* Eye Button */}
                 <button 
                     type="button" 
                     onClick={() => setShowPassword(!showPassword)}
@@ -142,6 +207,27 @@ const SignupForm = () => {
                 >
                     {showPassword ? <Eye size={18} /> : <EyeOff size={18} />}
                 </button>
+                {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
+            </div>
+
+            <div className="mb-3 relative">
+                <label className="block text-sm text-gray-700 mb-1">Confirm Password:</label>
+                <input 
+                    name="confirmPassword" 
+                    value={f.confirmPassword} 
+                    onChange={onChange} 
+                    type={showConfirmPassword ? "text" : "password"} 
+                    required 
+                    className={`w-full outline-blue-300 rounded-md p-2 pr-10 border ${errors.confirmPassword ? 'border-red-500' : 'border-gray-200'}`} 
+                />
+                <button 
+                    type="button" 
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-[34px] text-gray-400 hover:text-gray-600 cursor-pointer focus:outline-none"
+                >
+                    {showConfirmPassword ? <Eye size={18} /> : <EyeOff size={18} />}
+                </button>
+                {errors.confirmPassword && <p className="text-red-500 text-xs mt-1">{errors.confirmPassword}</p>}
             </div>
 
             <button type="submit" className="bg-blue-500 py-2 px-4 rounded-md hover:bg-blue-700 text-white font-semibold mx-auto block cursor-pointer mt-4 w-full">

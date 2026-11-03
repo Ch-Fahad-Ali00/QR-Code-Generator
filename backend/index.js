@@ -42,7 +42,13 @@ const adminOnly = (req, res, next) => {
 /* ---------- SIGNUP (add-data) ---------- */
 app.post("/add-data", async (req, res) => {
     try {
-        const { name, email, contact, password } = req.body;
+        // Extract confirmPassword from body
+        const { name, email, contact, password, confirmPassword } = req.body;
+
+        // 🟢 New Check: Do passwords match?
+        if (password !== confirmPassword) {
+            return res.status(400).json({ message: "Passwords do not match." });
+        }
 
         // 1. Strict Email Validation
         const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
@@ -78,6 +84,7 @@ app.post("/add-data", async (req, res) => {
         const userCount = await User.countDocuments();
         const role = userCount === 0 ? "admin" : "user";
 
+        // Save new user (we don't save confirmPassword to the DB)
         const newUser = new User({ name, email, contact: cleanedContact, password, role });
         const savedUser = await newUser.save();
 
@@ -101,7 +108,6 @@ app.post("/login", async (req, res) => {
         // 1. Check ENV Admin First (Hardcoded Admin)
         if (email === process.env.ADMIN_EMAIL && password === process.env.ADMIN_PASSWORD) {
             
-            // Use ADMIN_NAME from .env, or fallback to the email prefix
             const rawName = email.split("@")[0];
             const fallbackName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
             const displayName = process.env.ADMIN_NAME || fallbackName;
