@@ -42,49 +42,40 @@ const adminOnly = (req, res, next) => {
 /* ---------- SIGNUP (add-data) ---------- */
 app.post("/add-data", async (req, res) => {
     try {
-        // Extract confirmPassword from body
         const { name, email, contact, password, confirmPassword } = req.body;
 
-        // 🟢 New Check: Do passwords match?
         if (password !== confirmPassword) {
             return res.status(400).json({ message: "Passwords do not match." });
         }
 
-        // 1. Strict Email Validation
         const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
         if (!emailRegex.test(email)) {
             return res.status(400).json({ message: "Invalid email format" });
         }
 
-        // Block fake/disposable domains
         const emailDomain = email.split("@")[1].toLowerCase();
         const blockedDomains = [
             "xyz.com", "example.com", "test.com", "domain.com", "abc.com",
             "mailinator.com", "tempmail.com", "10minutemail.com", "guerrillamail.com", "yopmail.com"
         ];
         if (blockedDomains.includes(emailDomain)) {
-            return res.status(400).json({ message: "Please use a real email provider (e.g., Gmail, Yahoo, Outlook)." });
+            return res.status(400).json({ message: "Please use a real email provider." });
         }
 
-        // 2. Phone Number Validation
         const cleanedContact = contact.replace(/[\s-]/g, '');
         const intlPhoneRegex = /^\+?[1-9]\d{9,14}$/;
-
         if (!intlPhoneRegex.test(cleanedContact)) {
-            return res.status(400).json({ message: "Invalid phone number format. Please use a valid international number." });
+            return res.status(400).json({ message: "Invalid phone number format." });
         }
 
-        // Check if email already exists in DB
         const existing = await User.findOne({ email });
         if (existing) {
             return res.status(400).json({ message: "Email already registered" });
         }
 
-        // Make first user admin, others default to user
         const userCount = await User.countDocuments();
         const role = userCount === 0 ? "admin" : "user";
 
-        // Save new user (we don't save confirmPassword to the DB)
         const newUser = new User({ name, email, contact: cleanedContact, password, role });
         const savedUser = await newUser.save();
 
@@ -105,9 +96,7 @@ app.post("/login", async (req, res) => {
     try {
         const { email, password } = req.body;
 
-        // 1. Check ENV Admin First (Hardcoded Admin)
         if (email === process.env.ADMIN_EMAIL && password === process.env.ADMIN_PASSWORD) {
-            
             const rawName = email.split("@")[0];
             const fallbackName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
             const displayName = process.env.ADMIN_NAME || fallbackName;
@@ -119,16 +108,10 @@ app.post("/login", async (req, res) => {
             );
             return res.json({
                 token,
-                user: {
-                    _id: "env-admin-id",
-                    name: displayName,
-                    email: email,
-                    role: "admin"
-                }
+                user: { _id: "env-admin-id", name: displayName, email: email, role: "admin" }
             });
         }
 
-        // 2. Check Database Users
         const user = await User.findOne({ email });
         if (!user || !(await user.comparePassword(password))) {
             return res.status(401).json({ message: "Invalid credentials" });
@@ -142,12 +125,7 @@ app.post("/login", async (req, res) => {
 
         res.json({
             token,
-            user: {
-                _id: user._id,
-                name: user.name,
-                email: user.email,
-                role: user.role
-            }
+            user: { _id: user._id, name: user.name, email: user.email, role: user.role }
         });
     } catch (error) {
         console.log(error);
